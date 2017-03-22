@@ -4,6 +4,7 @@
 #include <set>
 #include <vector>
 #include <unordered_map>
+#include <tgmath.h>
 #define BLOCK 8
 #define COUNT 256
 
@@ -11,6 +12,7 @@ using namespace std;
 
 int tmapping[COUNT][COUNT];
 int tmappingC[COUNT][COUNT];
+int plainSize = 0;
 unsigned char p[100][3];
 unsigned char c[100][3];
 unsigned char k67[10][2];
@@ -40,7 +42,7 @@ unordered_map< unsigned char, vector<unsigned char> >  inversecave;
 unordered_map< string, vector<vector<unsigned char> > > tableM;
 
 void createTmapping();
-void readFiles(int argc, char const *argv[]);
+int readFiles(int argc, char const *argv[]);
 void findT0();
 int checkEquations(unsigned char plain[3], unsigned char cipher[3], unsigned char t0);
 void getPossibleK6K7();
@@ -57,8 +59,19 @@ int main(int argc, char const *argv[])
 {
 	printf("Trying to break the CMEA\n");
 
+	if(argc != 3)
+    {
+oops:   fprintf(stderr, "\nUsage: %s <plaintext file> <ciphertext file>\n\n", argv[0]);
+        exit(0);
+    }
+
+	int error = 0;
+	error = readFiles(argc, argv);
+	if(error != 0)
+	{
+		exit(0);
+	}
 	createTmapping();
-	readFiles(argc, argv);
 	findT0();
 	//printTBox();
 	getPossibleK6K7();
@@ -67,12 +80,12 @@ int main(int argc, char const *argv[])
 	//printCaveInverse();
 	createTableM();
 	searchTableM();
-	return 0;
+	return error;
 }
 
 void createTmapping()
 {
-	printf("-> Creating tmapping\n");
+	printf("-> Initializing TBox mapping table\n");
 	// intialize all the values in mapping matrxix as 0
 	for (int i = 0; i < COUNT; ++i)
 	{
@@ -91,10 +104,10 @@ void createTmapping()
 			tmapping[i][y] = 1 ;
 		}
 	}
-	printf("<- tmapping creation completed\n");
+	printf("<- TBox mapping table initialized\n");
 }
 
-void readFiles(int argc, char const *argv[])
+int readFiles(int argc, char const *argv[])
 {
 	printf("-> Reading files\n");
 	FILE *pf, *cf;
@@ -104,22 +117,28 @@ void readFiles(int argc, char const *argv[])
 	pf = fopen(argv[1],"rb");
 	if (!pf)
 	{
-		printf("unable to oepn plaintext file \n");
+		fprintf(stderr, "\nUnable to open plaintext file\n\n");
+		return 1;
 	}
+	fseek(pf, 0L, SEEK_END);
+	plainSize = ftell(pf) / 3;
+	printf("   Number of known plaintext blocks of 3 byte Size: %d\n", plainSize);
+	fseek(pf, 0L, SEEK_SET);
 
 	//open ciphertext file
 	//printf("%s\n", argv[2]);
 	cf = fopen(argv[2],"rb");
 	if (!cf)
 	{
-		printf("unable to oepn cmea1Cipher.txt \n");
+		fprintf(stderr, "\nUnable to open ciphertext file\n\n");
+		return 1;
 	}
 
 	int flag = 1;
 	unsigned char buf[3];
 	size_t block;
 	int i = 0;
-	while(i<100)
+	while(i<plainSize)
 	{
 		block = fread(buf, 1, 3, pf);
 		if(block < 3){
@@ -134,12 +153,13 @@ void readFiles(int argc, char const *argv[])
 		c[i][2] = buf[2];
 		i++;
 	}
-	printf("<- Reading files completed\n");
+	printf("<- Completed reading files\n");
+	return 0;
 }
 
 void findT0()
 {
-	printf("-> finding T0\n");
+	printf("-> Starting Phase 1 : Finding putative T0\n");
 
 	for (int i = 0; i < 164; ++i)
 	{
@@ -166,13 +186,13 @@ void findT0()
 		while(flag)
 		{
 			flag = 0;
-			for(int j = 0; j < 100; j++)
+			for(int j = 0; j < plainSize; j++)
 			{
 				int result = checkEquations(p[j], c[j], t0);
 				flag = flag | result;
 			}
 
-			for(int j = 0; j < 100; j++)
+			for(int j = 0; j < plainSize; j++)
 			{
 				int result = checkEquations(c[j], p[j], t0);
 				flag = flag | result;
@@ -200,7 +220,7 @@ void findT0()
 			break;
 		}
 	}// for t0
-	printf("<- T0 calculation completed\n");
+	printf("<- Completed Phase 1\n");
 }
 
 int checkEquations(unsigned char plain[3], unsigned char cipher[3], unsigned char t0)
@@ -265,7 +285,7 @@ void printTBox(){
 
 void getPossibleK6K7()
 {
-	printf("-> Finding K6 and K7 values\n");
+	printf("-> Starting Phase 2a: Backtracking for finding K6 K7\n");
 	for (int i = 0; i < COUNT; ++i)
 	{
 		for (int j = 0; j < COUNT; ++j)
@@ -297,14 +317,23 @@ void getPossibleK6K7()
 				k67[k67count][1] = j;
 				k67count++;
 			}
+			if(k67count == 10)
+			{
+				break;
+			}
 		}
+		if(k67count == 10)
+			{
+				break;
+			}
 	}
-	printf("<- Finding K6 and K7 values completed\n");
+	printf("<- Completed Phase 2a\n");
 }
 
 void findUniqueT()
 {
-	printf("-> Finding unique TBox entries\n");
+	printf("-> Starting Phase 2b: Meet in the middle\n");
+	printf("   -> Finding 4 unique TBox entries\n");
 	for (int i = 0; i < COUNT; ++i)
 	{
 		int possibleVal[256];
@@ -319,7 +348,7 @@ void findUniqueT()
 		}
 		if(possibleValCount == 1)
 		{
-			printf("   T[%d] = %02x\n", i, possibleVal[0]);
+			printf("      T[%d] = %02x\n", i, possibleVal[0]);
 			uniqueT[uniqueTcount][0] = i;
 			uniqueT[uniqueTcount][1] = possibleVal[0];
 			uniqueTcount++;
@@ -329,12 +358,12 @@ void findUniqueT()
 			break;
 		}
 	}
-	printf("<- Finding unique TBox entries completed \n");
+	printf("   <- Completed finding unique TBox entries\n");
 }
 
 void inverseCavetable()
 {
-	printf("-> Creating Inverse Cave table\n");
+	//printf("-> Creating Inverse Cave table\n");
 	for (int i = 0; i < COUNT; ++i)
 	{
 		unordered_map< unsigned char, vector<unsigned char> >::iterator it = inversecave.find(cavetable[i]);
@@ -351,14 +380,14 @@ void inverseCavetable()
 			inversecave[cavetable[i]] = temp;
 		}
 	}
-	cout<<"   Size of inversecave: "<<inversecave.size()<<endl;
-	printf("<- Creating Inverse Cave table completed\n");
+	//cout<<"   Size of inversecave: "<<inversecave.size()<<endl;
+	//printf("<- Creating Inverse Cave table completed\n");
 }
 
 void createTableM()
 {
-	printf("-> creating table M\n");
-	printf("   Size of table M = %lu\n", tableM.size());
+	printf("   -> Starting construction of search table M\n");
+	//printf("   Size of table M = %lu\n", tableM.size());
 	for (int i = 0; i < COUNT; ++i)
 	{
 		unsigned char k0 = i;
@@ -402,14 +431,16 @@ void createTableM()
 			}
 		}
 	}
-	printf("   Size of table M = %lu\n", tableM.size());
-	printf("-> creating table M completed\n");
+	printf("      Size of search table M = %lu\n", tableM.size());
+	printf("   -> Completed contruction of search table\n");
 }
 
 void searchTableM()
 {
-	printf("-> searching table M\n");
+	printf("   -> Starting comparison of guessed keys to search table M\n");
 	int count=0;
+	int firstFind = 0;
+	int firstFindFlag = 1;
 	for (int i = 0; i < COUNT; ++i)
 	{
 		unsigned char k4 = i;
@@ -525,7 +556,12 @@ void searchTableM()
 										key.push_back(k7);
 										if(tryKey(key))
 										{
-											printf("   key = [%02x %02x %02x %02x %02x %02x %02x %02x]\n", k0, k1, k2, k3, k4, k5, k6, k7);
+											if(firstFindFlag)
+											{
+												firstFindFlag = 0;
+												firstFind = count;
+											}
+											printf("      key = [%02x %02x %02x %02x %02x %02x %02x %02x] at trial %d\n", k0, k1, k2, k3, k4, k5, k6, k7, count);
 										}
 									}
 								}
@@ -536,8 +572,14 @@ void searchTableM()
 			}
 		}
 	}
-	printf("Tried number of keys: %d\n", count);
-	printf("<- searching table M completed\n");
+	printf("      Tried number of keys: %d\n", count);
+	printf("   <- Completed comparison\n");
+	printf("<- Completed Phase 2b\n");
+	if(!firstFindFlag)
+	{
+		cout<<"Computed first correct key in 2^"<<log2(firstFind)<<" attempts"<<endl;
+		cout<<"Effort reduction by factor of 2^"<<64-(log2(firstFind))<<endl;
+	}
 }
 
 void printCaveInverse()
